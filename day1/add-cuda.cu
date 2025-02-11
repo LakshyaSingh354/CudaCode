@@ -9,7 +9,7 @@ __global__ void add(int* a, int* b, int* c) {
 __managed__ int vector_a[1000000000], vector_b[1000000000], vector_c[1000000000];
 
 int main() {
-    int N = 1000 * 1000000;  // 10 million elements
+    int N = 1000 * 1000000;
     int threadsPerBlock = 1024;
     int blocksPerGrid = (N + threadsPerBlock - 1) / threadsPerBlock;
     // Initialize vectors
