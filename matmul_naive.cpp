@@ -14,18 +14,20 @@ void matmul_naive(float* A, float* B, float* C, int m, int k, int n){
 }
 
 int main(){
-    int m = 5, k = 4, n = 9;
+    int m = 4, k = 4, n = 4;
 
     float A[m*k], B[k*n], C[m*n];
 
     for (int i = 0; i < m; ++i){
         for(int j = 0; j < k; ++j){
             A[i*k + j] = i*0.1 + j*0.2;
+            // A[i*k + j] = 1.0;
         }
     }
     for (int i = 0; i < k; ++i){
         for(int j = 0; j < n; ++j){
             B[i*n + j] = i*0.2 + j*0.1;
+            // B[i*n + j] = 2.0;
         }
     }
     cout << "A = [";
