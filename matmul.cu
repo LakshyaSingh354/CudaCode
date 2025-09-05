@@ -44,7 +44,7 @@ __global__ void matmul_tiled(float* A, float* B, float* C, int m, int k, int n){
 
         __syncthreads();
 
-        for(int p = 0; p < k; p++){
+        for(int p = 0; p < TILE_SIZE; p++){
             sum += As[threadIdx.y][p] * Bs[p][threadIdx.x];
         }
         __syncthreads();

@@ -5,10 +5,10 @@ sudo apt-get -y install cuda-toolkit-12-4
 echo 'export PATH=/usr/local/cuda-12.4/bin:$PATH' >> ~/.bashrc
 echo 'export LD_LIBRARY_PATH=/usr/local/cuda-12.4/lib64:$LD_LIBRARY_PATH' >> ~/.bashrc
 source ~/.bashrc
-
-pip install --index-url https://download.pytorch.org/whl/cu124 torch torchvision torchaudio
 git clone https://github.com/LakshyaSingh354/CudaCode.git
 git clone https://github.com/LakshyaSingh354/Inferno.git
+
+pip install --index-url https://download.pytorch.org/whl/cu124 torch torchvision torchaudio
 cd Inferno
 python3 -m venv .venv
 source .venv/bin/activate
