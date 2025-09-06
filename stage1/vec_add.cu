@@ -16,22 +16,22 @@ __global__ void vec_add(float* A, float* B, float* C, int N){
 }
 
 int main(){
-    int N = 16;
+    int N = 1 << 20;
     size_t size = N * sizeof(float);
 
     std::vector<float> h_A(N, 1.0f), h_B(N, 2.0f), h_C(N);
 
-    std::cout << "A = [ ";
-    for (int i = 0; i < N; ++i){
-        std::cout << h_A[i] << " ";
-    }
-    std::cout << "]" << std::endl;
+    // std::cout << "A = [ ";
+    // for (int i = 0; i < N; ++i){
+    //     std::cout << h_A[i] << " ";
+    // }
+    // std::cout << "]" << std::endl;
 
-    std::cout << "B = [ ";
-    for (int i = 0; i < N; ++i){
-        std::cout << h_B[i] << " ";
-    }
-    std::cout << "]" << std::endl;
+    // std::cout << "B = [ ";
+    // for (int i = 0; i < N; ++i){
+    //     std::cout << h_B[i] << " ";
+    // }
+    // std::cout << "]" << std::endl;
 
     float *d_A, *d_B, *d_C;
     CUDA_CHECK(cudaMalloc(&d_A, size));
@@ -51,11 +51,11 @@ int main(){
 
     CUDA_CHECK(cudaMemcpy(h_C.data(), d_C, size, cudaMemcpyDeviceToHost));
 
-    std::cout << "A + B = [ ";
-    for (int i = 0; i < N; ++i){
-        std::cout << h_C[i] << " ";
-    }
-    std::cout << "]" << std::endl;
+    // std::cout << "A + B = [ ";
+    // for (int i = 0; i < N; ++i){
+    //     std::cout << h_C[i] << " ";
+    // }
+    // std::cout << "]" << std::endl;
 
     CUDA_CHECK(cudaFree(d_A)); CUDA_CHECK(cudaFree(d_B)); CUDA_CHECK(cudaFree(d_C));
 

@@ -7,7 +7,7 @@
         std::cerr << "CUDA Error: " << cudaGetErrorString(err) << " at " << __FILE__ << ":" << __LINE__ << std::endl; \
         exit(1); }}
 
-__global__ void dot_prod(float* A, float* B, float* prod, int N){
+__global__ void dot_prod_naive(float* A, float* B, float* prod, int N){
     int i = blockDim.x * blockIdx.x + threadIdx.x;
     if(i < N){
         atomicAdd(prod, A[i] * B[i]);
@@ -15,23 +15,23 @@ __global__ void dot_prod(float* A, float* B, float* prod, int N){
 }
 
 int main(){
-    int N = 16;
+    int N = 1000000;
     size_t size = N * sizeof(float);
 
     std::vector<float> h_A(N, 1.5f), h_B(N, 2.5f);
     float h_prod = 0.0f;
 
-    std::cout << "A = [ ";
-    for (int i = 0; i < N; ++i){
-        std::cout << h_A[i] << " ";
-    }
-    std::cout << "]" << std::endl;
+    // std::cout << "A = [ ";
+    // for (int i = 0; i < N; ++i){
+    //     std::cout << h_A[i] << " ";
+    // }
+    // std::cout << "]" << std::endl;
 
-    std::cout << "B = [ ";
-    for (int i = 0; i < N; ++i){
-        std::cout << h_B[i] << " ";
-    }
-    std::cout << "]" << std::endl;
+    // std::cout << "B = [ ";
+    // for (int i = 0; i < N; ++i){
+    //     std::cout << h_B[i] << " ";
+    // }
+    // std::cout << "]" << std::endl;
 
     float *d_A, *d_B, *d_prod;
     CUDA_CHECK(cudaMalloc(&d_A, size));
@@ -46,7 +46,7 @@ int main(){
     int threadsPerBlock = 256;
     int numBlocks = (N + threadsPerBlock - 1) / threadsPerBlock;
 
-    dot_prod<<<numBlocks, threadsPerBlock>>>(d_A, d_B, d_prod, N);
+    dot_prod_naive<<<numBlocks, threadsPerBlock>>>(d_A, d_B, d_prod, N);
 
     CUDA_CHECK(cudaGetLastError());
     CUDA_CHECK(cudaDeviceSynchronize());
