@@ -72,6 +72,7 @@ int main() {
     std::vector<int> sizes = {128, 256, 512, 1024, 4096};
     float alpha = 4.0f, beta = 2.0f;
 
+    std::cout << "Alpha = " << alpha << " | Beta = " << beta << std::endl;
     for (int N : sizes) {
         std::cout << "\nMatrix size: " << N << "x" << N << std::endl;
 
@@ -99,12 +100,12 @@ int main() {
         CUDA_CHECK(cudaMemcpy(d_C, h_C.data(), N*N*sizeof(float), cudaMemcpyHostToDevice));
 
         // ---- Benchmark naive kernel ----
-        float ms = benchmark(kernel_naive, d_A, d_B, d_C, N, 10, alpha, beta);
+        float ms = benchmark(kernel, d_A, d_B, d_C, N, 10, alpha, beta);
         double perf = gflops(N, ms);
 
         // Copy result back
         CUDA_CHECK(cudaMemcpy(d_C, h_C.data(), N*N*sizeof(float), cudaMemcpyHostToDevice));
-        kernel_naive(d_A, d_B, d_C, N, alpha, beta);
+        kernel(d_A, d_B, d_C, N, alpha, beta);
         CUDA_CHECK(cudaMemcpy(h_C.data(), d_C, N*N*sizeof(float), cudaMemcpyDeviceToHost));
 
         // Check correctness

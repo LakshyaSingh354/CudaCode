@@ -16,7 +16,7 @@ __global__ void naive_gemm(const float* A, const float* B, float* C,
 }
 
 // ------------------- Launcher wrapper -------------------
-void kernel_naive(const float* A, const float* B, float* C,
+void kernel(const float* A, const float* B, float* C,
                   int N, float alpha, float beta) {
     dim3 threadsPerBlock(16, 16);
     dim3 numBlocks((N + threadsPerBlock.x - 1) / threadsPerBlock.x,
