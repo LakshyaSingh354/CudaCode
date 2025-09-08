@@ -2,7 +2,8 @@
 #include <cuda_runtime.h>
 
 __global__ void naive_gemm(const float* A, const float* B, float* C,
-                                    int N, float alpha, float beta) {
+                                    int M, int K, int N, 
+                                    float alpha, float beta) {
     int row = blockIdx.y * blockDim.y + threadIdx.y;
     int col = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -17,10 +18,11 @@ __global__ void naive_gemm(const float* A, const float* B, float* C,
 
 // ------------------- Launcher wrapper -------------------
 void kernel(const float* A, const float* B, float* C,
-                  int N, float alpha, float beta) {
-    dim3 threadsPerBlock(16, 16);
+                  int M, int K, int N, 
+                  float alpha, float beta) {
+    dim3 threadsPerBlock(32, 32);
     dim3 numBlocks((N + threadsPerBlock.x - 1) / threadsPerBlock.x,
               (N + threadsPerBlock.y - 1) / threadsPerBlock.y);
 
-    naive_gemm<<<numBlocks, threadsPerBlock>>>(A, B, C, N, alpha, beta);
+    naive_gemm<<<numBlocks, threadsPerBlock>>>(A, B, C, M, K, N, alpha, beta);
 }

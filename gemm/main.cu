@@ -30,7 +30,7 @@ void gemm_cpu(const float* A, const float* B, float* C,
 }
 
 // ------------------- Timer utility -------------------
-float benchmark(void (*kernel)(const float*, const float*, float*, int, float, float),
+float benchmark(void (*kernel)(const float*, const float*, float*, int, int, int, float, float),
                 const float* d_A, const float* d_B, float* d_C,
                 int N, int iters, float alpha, float beta) {
     cudaEvent_t start, stop;
@@ -38,15 +38,15 @@ float benchmark(void (*kernel)(const float*, const float*, float*, int, float, f
     CUDA_CHECK(cudaEventCreate(&stop));
 
     // Warmup
-    for (int i = 0; i < 5; i++) {
-        kernel(d_A, d_B, d_C, N, alpha, beta);
-    }
+    // for (int i = 0; i < 5; i++) {
+    //     kernel(d_A, d_B, d_C, N, N, N, alpha, beta);
+    // }
     CUDA_CHECK(cudaDeviceSynchronize());
 
     // Benchmark
     CUDA_CHECK(cudaEventRecord(start));
     for (int i = 0; i < iters; i++) {
-        kernel(d_A, d_B, d_C, N, alpha, beta);
+        kernel(d_A, d_B, d_C, N, N, N, alpha, beta);
     }
     CUDA_CHECK(cudaEventRecord(stop));
     CUDA_CHECK(cudaEventSynchronize(stop));
@@ -64,13 +64,13 @@ float benchmark(void (*kernel)(const float*, const float*, float*, int, float, f
 double gflops(int N, float ms) {
     double ops = 2.0 * N * N * N;
     double sec = ms / 1e3;
-    return ops / sec / 1e9;
+    return (ops / sec / 1e9);
 }
 
 // ------------------- Driver -------------------
 int main() {
-    std::vector<int> sizes = {128, 256, 512, 1024, 4096};
-    float alpha = 4.0f, beta = 2.0f;
+    std::vector<int> sizes = {1024};
+    float alpha = 0.5f, beta = 3.0f;
 
     std::cout << "Alpha = " << alpha << " | Beta = " << beta << std::endl;
     for (int N : sizes) {
@@ -100,12 +100,12 @@ int main() {
         CUDA_CHECK(cudaMemcpy(d_C, h_C.data(), N*N*sizeof(float), cudaMemcpyHostToDevice));
 
         // ---- Benchmark naive kernel ----
-        float ms = benchmark(kernel, d_A, d_B, d_C, N, 10, alpha, beta);
+        float ms = benchmark(kernel, d_A, d_B, d_C, N, 1, alpha, beta);
         double perf = gflops(N, ms);
 
         // Copy result back
         CUDA_CHECK(cudaMemcpy(d_C, h_C.data(), N*N*sizeof(float), cudaMemcpyHostToDevice));
-        kernel(d_A, d_B, d_C, N, alpha, beta);
+        kernel(d_A, d_B, d_C, N, N, N, alpha, beta);
         CUDA_CHECK(cudaMemcpy(h_C.data(), d_C, N*N*sizeof(float), cudaMemcpyDeviceToHost));
 
         // Check correctness
