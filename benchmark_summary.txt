@@ -1,0 +1,3 @@
+Naive = 0.86%
+GMEM Coalescing = 11.84%
+SMEM Caching = 13.4512%

@@ -3,7 +3,8 @@
 #include <vector>
 #include <random>
 #include <cmath>
-#include "kernels/naive.cuh"
+#include "kernels/tiled.cuh"
+#include "kernels/cublas.cuh"
 
 #define CUDA_CHECK(err) \
     if (err != cudaSuccess) { \
@@ -38,9 +39,9 @@ float benchmark(void (*kernel)(const float*, const float*, float*, int, int, int
     CUDA_CHECK(cudaEventCreate(&stop));
 
     // Warmup
-    // for (int i = 0; i < 5; i++) {
-    //     kernel(d_A, d_B, d_C, N, N, N, alpha, beta);
-    // }
+    for (int i = 0; i < 5; i++) {
+        kernel(d_A, d_B, d_C, N, N, N, alpha, beta);
+    }
     CUDA_CHECK(cudaDeviceSynchronize());
 
     // Benchmark
@@ -69,7 +70,7 @@ double gflops(int N, float ms) {
 
 // ------------------- Driver -------------------
 int main() {
-    std::vector<int> sizes = {1024};
+    std::vector<int> sizes = {128, 256, 4096};
     float alpha = 0.5f, beta = 3.0f;
 
     std::cout << "Alpha = " << alpha << " | Beta = " << beta << std::endl;
@@ -99,9 +100,13 @@ int main() {
         CUDA_CHECK(cudaMemcpy(d_B, h_B.data(), N*N*sizeof(float), cudaMemcpyHostToDevice));
         CUDA_CHECK(cudaMemcpy(d_C, h_C.data(), N*N*sizeof(float), cudaMemcpyHostToDevice));
 
-        // ---- Benchmark naive kernel ----
-        float ms = benchmark(kernel, d_A, d_B, d_C, N, 1, alpha, beta);
+        // ---- Benchmark kernel ----
+        float ms = benchmark(kernel, d_A, d_B, d_C, N, 10, alpha, beta);
         double perf = gflops(N, ms);
+
+        // ---- Benchmark cublas ----
+        float ms_cublas = benchmark(kernel_cublas, d_A, d_B, d_C, N, 10, alpha, beta);
+        double perf_cublas = gflops(N, ms_cublas);
 
         // Copy result back
         CUDA_CHECK(cudaMemcpy(d_C, h_C.data(), N*N*sizeof(float), cudaMemcpyHostToDevice));
@@ -124,6 +129,7 @@ int main() {
             std::cout << "Average Time Elapsed: " << ms << " ms, "
                     << perf << " GFLOPS" << std::endl;
         }
+        std::cout << "Perfomance relative to cuBLAS: " << (perf/perf_cublas) * 100 << "%" << std::endl;
         cudaFree(d_A);
         cudaFree(d_B);
         cudaFree(d_C);

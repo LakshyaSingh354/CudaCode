@@ -1,7 +1,6 @@
 #pragma once
 
 #include <cuda_runtime.h>
-#include <cmath>
 
 
 #define BLOCK_SIZE 32
