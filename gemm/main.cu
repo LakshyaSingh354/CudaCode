@@ -3,7 +3,7 @@
 #include <vector>
 #include <random>
 #include <cmath>
-#include "kernels/tiled.cuh"
+#include "kernels/blocktiling_1d.cuh"
 #include "kernels/cublas.cuh"
 
 #define CUDA_CHECK(err) \
