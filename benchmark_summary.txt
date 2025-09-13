@@ -1,3 +1,5 @@
 Naive = 0.86%
 GMEM Coalescing = 11.84%
 SMEM Caching = 13.4512%
+1D Blocktiling = 35.0414% || ~~37.00%~~
+1D Blocktiling = 53.0386%
