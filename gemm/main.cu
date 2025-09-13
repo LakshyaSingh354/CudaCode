@@ -3,7 +3,7 @@
 #include <vector>
 #include <random>
 #include <cmath>
-#include "kernels/vectorized.cuh"
+#include "kernels/vec_opt.cuh"
 #include "kernels/cublas.cuh"
 
 #define CUDA_CHECK(err) \
@@ -70,7 +70,7 @@ double gflops(int N, float ms) {
 
 // ------------------- Driver -------------------
 int main() {
-    std::vector<int> sizes = {128, 256, 4096};
+    std::vector<int> sizes = {128, 256, 1024, 4096};
     float alpha = 0.5f, beta = 3.0f;
 
     std::cout << "Alpha = " << alpha << " | Beta = " << beta << std::endl;

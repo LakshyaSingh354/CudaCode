@@ -3,12 +3,11 @@
 
 #define BM 128
 #define BN 128
-#define BK 8
+#define BK 32
 #define TM 8
 #define TN 8
 
-// Kernel-6: 2D thread tiling + vectorized GMEM loads + A transpose
-__global__ void sgemm_vec_transA(const float* __restrict__ A,
+__global__ void __launch_bounds__(256) sgemm_vec_transA (const float* __restrict__ A,
                                  const float* __restrict__ B,
                                  float* __restrict__ C,
                                  int M, int K, int N,

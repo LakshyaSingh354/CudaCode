@@ -5,7 +5,7 @@
 // Step 1: Define new tiling parameters for more control
 #define BM 64  // Block tile size for M dimension
 #define BN 64  // Block tile size for N dimension
-#define BK 8   // Block tile size for K dimension
+#define BK 32   // Block tile size for K dimension
 #define TM 8   // Thread tile size for M dimension
 
 __global__ void sgemm_1D_tiling(const float* A, const float* B, float* C, 

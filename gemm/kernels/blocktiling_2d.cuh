@@ -5,7 +5,7 @@
 
 #define BM 128   // Block tile size M
 #define BN 128   // Block tile size N
-#define BK 8    // Block tile size K (depth per iter)
+#define BK 32    // Block tile size K (depth per iter)
 #define TM 8    // Thread tile size M (rows per thread)
 #define TN 8    // Thread tile size N (cols per thread)
 

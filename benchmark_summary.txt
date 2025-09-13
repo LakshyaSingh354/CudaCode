@@ -1,6 +1,7 @@
-Naive = 0.86%
-GMEM Coalescing = 11.84%
-SMEM Caching = 13.4512%
-1D Blocktiling = 35.0414% || ~~37.00%~~
-1D Blocktiling = 53.0386%
-Vectorized Memory Access = 64.619%
+Naive = 1.3102%
+GMEM Coalescing = 10.3784%
+SMEM Caching = 12.9429%
+1D Blocktiling = 47.1902%
+2D Blocktiling = 66.3421%
+Vectorized Memory Access = 73.1141%
+Warptiling = 77.6222%

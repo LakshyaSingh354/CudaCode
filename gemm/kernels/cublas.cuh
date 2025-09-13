@@ -99,3 +99,9 @@ void kernel_cublas(const float* A, const float* B, float* C,
                    float alpha, float beta) {
     sgemm_cublas_wrapper(A, B, C, M, K, N, alpha, beta);
 }
+
+// void kernel(const float* A, const float* B, float* C,
+//                    int M, int K, int N, 
+//                    float alpha, float beta) {
+//     sgemm_cublas_wrapper(A, B, C, M, K, N, alpha, beta);
+// }
