@@ -54,7 +54,7 @@ int main(){
     int N = 1 << 20;
     std::vector<float> h_A(N);
     std::mt19937 rng(123);
-    std::normal_distribution<float> dist(3.0f, 0.1f);
+    std::normal_distribution<float> dist(3.0f, 0.5f);
     for (int i = 0; i < N; i++) {
         h_A[i] = dist(rng);
     }

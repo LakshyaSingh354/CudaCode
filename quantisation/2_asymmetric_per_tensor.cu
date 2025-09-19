@@ -9,40 +9,39 @@
     { cudaError_t err = call; if(err != cudaSuccess) { \
         std::cerr << "CUDA error: " << cudaGetErrorString(err) << std::endl; exit(1);}}
 
-// max kernel
-__global__ void max_kernel(const float* __restrict__ A, float* maxVal, int N){
+__global__ void minmax_kernel(const float* __restrict__ A,
+                              float* blockMins,
+                              float* blockMaxs,
+                              int N)
+{
     extern __shared__ float sdata[];
+    float* smin = sdata;                         // first half for mins
+    float* smax = sdata + blockDim.x;            // second half for maxs
 
     int tid = threadIdx.x;
-    int i = blockDim.x * blockIdx.x + threadIdx.x;
+    int i   = blockIdx.x * blockDim.x + threadIdx.x;
 
-    if (i < N) sdata[tid] = A[i];
+    if (i < N) {
+        smin[tid] = A[i];
+        smax[tid] = A[i];
+    }
     __syncthreads();
 
-    for(int j = blockDim.x / 2; j > 0; j >>= 1){
-        if (tid < j) sdata[tid] = fmaxf(sdata[tid], sdata[tid + j]);
+    // Reduction for min and max in parallel
+    for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+        if (tid < stride) {
+            smin[tid] = fminf(smin[tid], smin[tid + stride]);
+            smax[tid] = fmaxf(smax[tid], smax[tid + stride]);
+        }
         __syncthreads();
     }
 
-    if(tid == 0) maxVal[blockIdx.x] = sdata[0];
-}
-
-// min kernel
-__global__ void min_kernel(const float* __restrict__ A, float* minVal, int N){
-    extern __shared__ float sdata[];
-
-    int tid = threadIdx.x;
-    int i = blockDim.x * blockIdx.x + threadIdx.x;
-
-    if (i < N) sdata[tid] = A[i];
-    __syncthreads();
-
-    for(int j = blockDim.x / 2; j > 0; j >>=1){
-        if (tid < j) sdata[tid] = fminf(sdata[tid], sdata[tid + j]);
-        __syncthreads();
+    if (tid == 0) {
+        blockMins[blockIdx.x] = smin[0];
+        blockMaxs[blockIdx.x] = smax[0];
     }
-    if (tid == 0) minVal[blockIdx.x] = sdata[0];
 }
+
 
 // quantization
 __global__ void quantize(const float* __restrict__ A, uint8_t* __restrict__ Q, float scale, float zeroPoint, float N){
@@ -68,7 +67,7 @@ int main(){
     int N = 1 << 20;
     std::vector<float> h_A(N);
     std::mt19937 rng(123);
-    std::normal_distribution<float> dist(3.0f, 0.1f);
+    std::normal_distribution<float> dist(3.0f, 0.5f);
     for (int i = 0; i < N; i++) {
         h_A[i] = dist(rng);
     }
@@ -78,26 +77,22 @@ int main(){
 
     int threads = 256;
     int blocks = (N + threads - 1) / threads;
-    float* d_partial; CHECK_CUDA(cudaMalloc(&d_partial, blocks * sizeof(float)));
+    float* d_partial_min; CHECK_CUDA(cudaMalloc(&d_partial_min, blocks * sizeof(float)));
+    float* d_partial_max; CHECK_CUDA(cudaMalloc(&d_partial_max, blocks * sizeof(float)));
 
-    max_kernel<<<blocks, threads, threads * sizeof(float)>>>(d_A, d_partial, N);
+    minmax_kernel<<<blocks, threads, 2 * threads * sizeof(float)>>>(d_A, d_partial_min, d_partial_max, N);
     CHECK_CUDA(cudaDeviceSynchronize());
     CHECK_CUDA(cudaGetLastError());
 
-    std::vector<float> h_partial(blocks);
-    CHECK_CUDA(cudaMemcpy(h_partial.data(), d_partial, blocks * sizeof(float), cudaMemcpyDeviceToHost));
-    float maxval = 0.0f;
-    for (float v : h_partial) maxval = std::max(maxval, v);
+    std::vector<float> h_partial_min(blocks); std::vector<float> h_partial_max(blocks);
+    CHECK_CUDA(cudaMemcpy(h_partial_max.data(), d_partial_max, blocks * sizeof(float), cudaMemcpyDeviceToHost));
+    float maxval = -INFINITY;
+    for (float v : h_partial_max) maxval = std::max(maxval, v);
     std::cout << "Max = " << maxval << std::endl;
 
-
-    min_kernel<<<blocks, threads, threads * sizeof(float)>>>(d_A, d_partial, N);
-    CHECK_CUDA(cudaDeviceSynchronize());
-    CHECK_CUDA(cudaGetLastError());
-
-    CHECK_CUDA(cudaMemcpy(h_partial.data(), d_partial, blocks * sizeof(float), cudaMemcpyDeviceToHost));
-    float minval = 0.0f;
-    for (float v : h_partial) minval = std::min(minval, v);
+    CHECK_CUDA(cudaMemcpy(h_partial_min.data(), d_partial_min, blocks * sizeof(float), cudaMemcpyDeviceToHost));
+    float minval = INFINITY;
+    for (float v : h_partial_min) minval = std::min(minval, v);
     std::cout << "Min = " << minval << std::endl;
 
     float scale = (maxval - minval) / 255.f;
@@ -131,6 +126,6 @@ int main(){
     mse /= N;
     std::cout << "MSE: " << mse << std::endl;
 
-    cudaFree(d_A); cudaFree(d_partial); cudaFree(d_Q); cudaFree(d_Arec);
+    cudaFree(d_A); cudaFree(d_partial_min); cudaFree(d_partial_max); cudaFree(d_Q); cudaFree(d_Arec);
     return 0;
 }
