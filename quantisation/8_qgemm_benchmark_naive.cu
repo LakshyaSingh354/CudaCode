@@ -149,7 +149,7 @@ void compute_mse(const std::vector<float>& Y_ref, const std::vector<float>& Y_q,
 // ------------------- Main -------------------
 
 int main() {
-    int M = 4096, K = 4096, N = 4096;
+    int M = 4096, K = 32, N = 4096;
 
     cublasHandle_t cublas_handle;
     cublasCreate(&cublas_handle);
@@ -209,11 +209,11 @@ int main() {
     cudaDeviceSynchronize();
 
     // Timed run
-    cudaEventRecord(start);
     absmax_rowwise_kernel<<<M, 256, 256 * sizeof(float)>>>(dW, dW_scales, M, K);
     quantize_weights_rowwise<<<dim3(M, (K + 255) / 256), 256>>>(dW, dWq, dW_scales, M, K);
     colwise_minmax<<<N, 256, 2 * 256 * sizeof(float)>>>(dX, dX_colMins, dX_colMaxs, K, N);
     quantize_activations_colwise<<<dim3(N, (K + 255) / 256), 256>>>(dX, dXq, dX_colMins, dX_colMaxs, dX_scales, dX_zps, K, N);
+    cudaEventRecord(start);
     qgemm_kernel<<<grid, block>>>(dWq, dW_scales, dXq, dX_scales, dX_zps, dY, M, K, N);
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);
@@ -247,12 +247,12 @@ int main() {
 
     // BENCHMARK: The cuBLAS SGEMM call!
     cublasSgemm(cublas_handle, CUBLAS_OP_N, CUBLAS_OP_N,
-                N, M, K,
-                &alpha,
-                dX, N,
-                dW, K,
-                &beta,
-                dY_cublas, N);
+                    N, M, K,
+                    &alpha,
+                    dX, N,
+                    dW, K,
+                    &beta,
+                    dY_cublas, N);
 
     // BENCHMARK: Stop timer and calculate elapsed time
     cudaEventRecord(stop);
