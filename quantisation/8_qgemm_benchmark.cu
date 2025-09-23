@@ -1,3 +1,4 @@
+#include <cublas_v2.h>
 #include <cuda_runtime.h>
 #include <iostream>
 #include <vector>
@@ -148,7 +149,17 @@ void compute_mse(const std::vector<float>& Y_ref, const std::vector<float>& Y_q,
 // ------------------- Main -------------------
 
 int main() {
-    int M = 4096, K = 32, N = 4096;
+    int M = 4096, K = 4096, N = 4096;
+
+    cublasHandle_t cublas_handle;
+    cublasCreate(&cublas_handle);
+
+    // BENCHMARK: Create CUDA events for timing
+    cudaEvent_t start, stop;
+    cudaEventCreate(&start);
+    cudaEventCreate(&stop);
+    float qgemm_time = 0.0f;
+    float cublas_time = 0.0f;
 
     std::vector<float> hW(M * K);
     std::vector<float> hX(K * N);
@@ -165,6 +176,10 @@ int main() {
     cudaMemcpy(dW, hW.data(), M * K * sizeof(float), cudaMemcpyHostToDevice);
     cudaMemcpy(dX, hX.data(), K * N * sizeof(float), cudaMemcpyHostToDevice);
 
+    // ------------------- Custom Quantized GEMM Execution -------------------
+    std::cout << "Running Quantized GEMM..." << std::endl;
+
+    int warmup_iters = 3;
     int8_t* dWq; uint8_t* dXq;
     cudaMalloc(&dWq, M * K * sizeof(int8_t));
     cudaMalloc(&dXq, K * N * sizeof(uint8_t));
@@ -177,55 +192,95 @@ int main() {
     cudaMalloc(&dX_scales, N * sizeof(float));
     cudaMalloc(&dX_zps, N * sizeof(int));
 
-    absmax_rowwise_kernel<<<M, 256, 256 * sizeof(float)>>>(dW, dW_scales, M, K);
-    cudaDeviceSynchronize();
-
-    quantize_weights_rowwise<<<M, K>>>(dW, dWq, dW_scales, M, K);
-    cudaDeviceSynchronize();
-
-    colwise_minmax<<<N, 256, 2 * 256 * sizeof(float)>>>(dX, dX_colMins, dX_colMaxs, K, N);
-    cudaDeviceSynchronize();
-
-    quantize_activations_colwise<<<N, K>>>(dX, dXq, dX_colMins, dX_colMaxs,
-                                           dX_scales, dX_zps, K, N);
-    cudaDeviceSynchronize();
-
     float* dY;
     cudaMalloc(&dY, M * N * sizeof(float));
 
     dim3 block(16, 16);
     dim3 grid((N + block.x - 1) / block.x, (M + block.y - 1) / block.y);
-    qgemm_kernel<<<grid, block>>>(dWq, dW_scales, dXq, dX_scales, dX_zps, dY, M, K, N);
+
+    // Warmup (not timed)
+    for (int i = 0; i < warmup_iters; ++i) {
+        absmax_rowwise_kernel<<<M, 256, 256 * sizeof(float)>>>(dW, dW_scales, M, K);
+        quantize_weights_rowwise<<<dim3(M, (K + 255) / 256), 256>>>(dW, dWq, dW_scales, M, K);
+        colwise_minmax<<<N, 256, 2 * 256 * sizeof(float)>>>(dX, dX_colMins, dX_colMaxs, K, N);
+        quantize_activations_colwise<<<dim3(N, (K + 255) / 256), 256>>>(dX, dXq, dX_colMins, dX_colMaxs, dX_scales, dX_zps, K, N);
+        qgemm_kernel<<<grid, block>>>(dWq, dW_scales, dXq, dX_scales, dX_zps, dY, M, K, N);
+    }
     cudaDeviceSynchronize();
+
+    // Timed run
+    cudaEventRecord(start);
+    absmax_rowwise_kernel<<<M, 256, 256 * sizeof(float)>>>(dW, dW_scales, M, K);
+    quantize_weights_rowwise<<<dim3(M, (K + 255) / 256), 256>>>(dW, dWq, dW_scales, M, K);
+    colwise_minmax<<<N, 256, 2 * 256 * sizeof(float)>>>(dX, dX_colMins, dX_colMaxs, K, N);
+    quantize_activations_colwise<<<dim3(N, (K + 255) / 256), 256>>>(dX, dXq, dX_colMins, dX_colMaxs, dX_scales, dX_zps, K, N);
+    qgemm_kernel<<<grid, block>>>(dWq, dW_scales, dXq, dX_scales, dX_zps, dY, M, K, N);
+    cudaEventRecord(stop);
+    cudaEventSynchronize(stop);
+    cudaEventElapsedTime(&qgemm_time, start, stop);
 
     std::vector<float> hY(M * N);
     cudaMemcpy(hY.data(), dY, M * N * sizeof(float), cudaMemcpyDeviceToHost);
 
-    // ------------------- Reference + Error -------------------
+    // ------------------- cuBLAS FP32 GEMM Execution -------------------
+    std::cout << "Running cuBLAS FP32 SGEMM..." << std::endl;
+
+    float* dY_cublas;
+    cudaMalloc(&dY_cublas, M * N * sizeof(float));
+    const float alpha = 1.0f;
+    const float beta = 0.0f;
+
+    // Warmup (not timed)
+    for (int i = 0; i < warmup_iters; ++i) {
+        cublasSgemm(cublas_handle, CUBLAS_OP_N, CUBLAS_OP_N,
+                    N, M, K,
+                    &alpha,
+                    dX, N,
+                    dW, K,
+                    &beta,
+                    dY_cublas, N);
+    }
+    cudaDeviceSynchronize();
+
+    // BENCHMARK: Start timer for cuBLAS
+    cudaEventRecord(start);
+
+    // BENCHMARK: The cuBLAS SGEMM call!
+    cublasSgemm(cublas_handle, CUBLAS_OP_N, CUBLAS_OP_N,
+                N, M, K,
+                &alpha,
+                dX, N,
+                dW, K,
+                &beta,
+                dY_cublas, N);
+
+    // BENCHMARK: Stop timer and calculate elapsed time
+    cudaEventRecord(stop);
+    cudaEventSynchronize(stop);
+    cudaEventElapsedTime(&cublas_time, start, stop);
+
+    // ------------------- Reference + Error + Timings -------------------
     std::vector<float> hY_ref(M * N);
-    reference_fp32_gemm(hW, hX, hY_ref, M, K, N);
+    cudaMemcpy(hY_ref.data(), dY_cublas, M * N * sizeof(float), cudaMemcpyDeviceToHost);
 
-    // std::cout << "Quantized GEMM result:" << std::endl;
-    // for (int m = 0; m < M; m++) {
-    //     for (int n = 0; n < N; n++) {
-    //         std::cout << hY[m * N + n] << " ";
-    //     }
-    //     std::cout << std::endl;
-    // }
-
-    // std::cout << "Reference FP32 GEMM result:" << std::endl;
-    // for (int m = 0; m < M; m++) {
-    //     for (int n = 0; n < N; n++) {
-    //         std::cout << hY_ref[m * N + n] << " ";
-    //     }
-    //     std::cout << std::endl;
-    // }
-
+    std::cout << "\n--- BENCHMARK RESULTS ---" << std::endl;
+    printf("Custom Quantized GEMM time:  %.3f ms\n", qgemm_time);
+    printf("cuBLAS FP32 GEMM time:     %.3f ms\n\n", cublas_time);
+    printf("Speedup: %.3f\n", (cublas_time/qgemm_time));
+    
+    std::cout << "--- ACCURACY (Custom Kernel vs cuBLAS) ---" << std::endl;
     compute_mse(hY_ref, hY, M, N);
+    std::cout << std::endl;
 
+    // ------------------- Cleanup -------------------
     cudaFree(dW); cudaFree(dX); cudaFree(dWq); cudaFree(dXq);
     cudaFree(dW_scales); cudaFree(dX_colMins); cudaFree(dX_colMaxs);
     cudaFree(dX_scales); cudaFree(dX_zps); cudaFree(dY);
+    cudaFree(dY_cublas);
+
+    cudaEventDestroy(start);
+    cudaEventDestroy(stop);
+    cublasDestroy(cublas_handle);
 
     return 0;
 }
