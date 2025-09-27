@@ -26,5 +26,12 @@ Speedup: 0.100
 MSE: 426.742, MaxAbsErr: 108.253
 
 --------------------------------------------------------
-Register Tiling 
+Register Tiling (w/o Tensor Cores)
 --------------------------------------------------------
+--- BENCHMARK RESULTS ---
+Custom Quantized GEMM time:  96.399 ms
+cuBLAS FP32 GEMM time:     30.391 ms
+Speedup: 0.315
+
+--- ACCURACY (Custom Kernel vs cuBLAS) ---
+MSE: 426.742, MaxAbsErr: 108.253
