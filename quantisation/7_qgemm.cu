@@ -67,35 +67,45 @@ __global__ void colwise_minmax(const float* __restrict__ A, float* colMins, floa
 }
 
 __global__ void quantize_weights_rowwise(const float* __restrict__ A, int8_t* Aq,
-                                        const float* __restrict__ rowScales, int M, int K) {
+                                         const float* __restrict__ rowScales, int M, int K) {
     int m = blockIdx.x;
-    int k = threadIdx.x;
-    if (m < M && k < K) {
+    if (m < M) {
         float scale = rowScales[m];
-        float val = A[m * K + k] / scale;
-        val = fmaxf(fminf(val, 127.f), -127.f);
-        Aq[m * K + k] = static_cast<int8_t>(rintf(val));
+        for (int k = threadIdx.x; k < K; k += blockDim.x) {
+            float val = A[m * K + k] / scale;
+            val = fmaxf(fminf(val, 127.f), -127.f);
+            Aq[m * K + k] = static_cast<int8_t>(rintf(val));
+        }
     }
 }
 
 __global__ void quantize_activations_colwise(const float* __restrict__ X, uint8_t* Xq,
-                                            const float* __restrict__ colMins,
-                                            const float* __restrict__ colMaxs,
-                                            float* colScales, int* colZPs,
-                                            int M, int N) {
+                                             const float* __restrict__ colMins,
+                                             const float* __restrict__ colMaxs,
+                                             float* colScales, int* colZPs,
+                                             int K, int N) { // Note: M dimension here is K
     int n = blockIdx.x;
-    int m = threadIdx.x;
-    if (n < N && m < M) {
-        float minv = colMins[n];
-        float maxv = colMaxs[n];
-        float scale = fmaxf((maxv - minv) / 255.f, 1e-8f);
-        int zp = static_cast<int>(rintf(-minv / scale));
-        colScales[n] = scale;
-        colZPs[n] = zp;
+    if (n < N) {
+        if (threadIdx.x == 0) {
+            float minv = colMins[n];
+            float maxv = colMaxs[n];
+            float scale = fmaxf((maxv - minv) / 255.f, 1e-8f);
+            int zp = static_cast<int>(rintf(roundf(-minv / scale)));
+            zp = max(0, min(255, zp));
+            colScales[n] = scale;
+            colZPs[n] = zp;
+        }
 
-        float val = X[m * N + n] / scale + zp;
-        val = fmaxf(fminf(val, 255.f), 0.f);
-        Xq[m * N + n] = static_cast<uint8_t>(rintf(val));
+        __syncthreads();
+
+        float scale = colScales[n];
+        int zp = colZPs[n];
+
+        for (int m = threadIdx.x; m < K; m += blockDim.x) {
+            float val = X[m * N + n] / scale + zp;
+            val = fmaxf(fminf(val, 255.f), 0.f);
+            Xq[m * N + n] = static_cast<uint8_t>(rintf(val));
+        }
     }
 }
 
@@ -135,20 +145,27 @@ void compute_mse(const std::vector<float>& Y_ref, const std::vector<float>& Y_q,
                  int M, int N) {
     double mse = 0.0;
     double max_abs_err = 0.0;
+    double norm_ref = 0.0;
+    double norm_diff = 0.0;
     int size = M * N;
     for (int i = 0; i < size; i++) {
         double diff = Y_ref[i] - Y_q[i];
         mse += diff * diff;
         max_abs_err = std::max(max_abs_err, fabs(diff));
+        norm_ref += Y_ref[i] * Y_ref[i];
+        norm_diff += diff * diff;
     }
     mse /= size;
-    std::cout << "MSE: " << mse << ", MaxAbsErr: " << max_abs_err << std::endl;
+    double rel_err = sqrt(norm_diff) / (sqrt(norm_ref) + 1e-12);
+    std::cout << "MSE: " << mse
+              << ", RelErr: " << rel_err
+              << ", MaxAbsErr: " << max_abs_err << std::endl;
 }
 
 // ------------------- Main -------------------
 
 int main() {
-    int M = 4096, K = 32, N = 4096;
+    int M = 512, K = 1024, N = 4096;
 
     std::vector<float> hW(M * K);
     std::vector<float> hX(K * N);
@@ -180,13 +197,13 @@ int main() {
     absmax_rowwise_kernel<<<M, 256, 256 * sizeof(float)>>>(dW, dW_scales, M, K);
     cudaDeviceSynchronize();
 
-    quantize_weights_rowwise<<<M, K>>>(dW, dWq, dW_scales, M, K);
+    quantize_weights_rowwise<<<M, std::min(256, K)>>>(dW, dWq, dW_scales, M, K);
     cudaDeviceSynchronize();
 
     colwise_minmax<<<N, 256, 2 * 256 * sizeof(float)>>>(dX, dX_colMins, dX_colMaxs, K, N);
     cudaDeviceSynchronize();
 
-    quantize_activations_colwise<<<N, K>>>(dX, dXq, dX_colMins, dX_colMaxs,
+    quantize_activations_colwise<<<N, std::min(256, M), 0>>>(dX, dXq, dX_colMins, dX_colMaxs,
                                            dX_scales, dX_zps, K, N);
     cudaDeviceSynchronize();
 
@@ -204,22 +221,6 @@ int main() {
     // ------------------- Reference + Error -------------------
     std::vector<float> hY_ref(M * N);
     reference_fp32_gemm(hW, hX, hY_ref, M, K, N);
-
-    // std::cout << "Quantized GEMM result:" << std::endl;
-    // for (int m = 0; m < M; m++) {
-    //     for (int n = 0; n < N; n++) {
-    //         std::cout << hY[m * N + n] << " ";
-    //     }
-    //     std::cout << std::endl;
-    // }
-
-    // std::cout << "Reference FP32 GEMM result:" << std::endl;
-    // for (int m = 0; m < M; m++) {
-    //     for (int n = 0; n < N; n++) {
-    //         std::cout << hY_ref[m * N + n] << " ";
-    //     }
-    //     std::cout << std::endl;
-    // }
 
     compute_mse(hY_ref, hY, M, N);
 

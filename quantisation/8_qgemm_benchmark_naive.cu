@@ -149,7 +149,7 @@ void compute_mse(const std::vector<float>& Y_ref, const std::vector<float>& Y_q,
 // ------------------- Main -------------------
 
 int main() {
-    int M = 4096, K = 32, N = 4096;
+    int M = 512, K = 1024, N = 4096;
 
     cublasHandle_t cublas_handle;
     cublasCreate(&cublas_handle);
